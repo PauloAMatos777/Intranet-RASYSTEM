@@ -1,0 +1,730 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package br.com.infox.telas;
+
+import java.sql.*;
+import br.com.infox.dal.Moduloconexao;
+import java.util.HashMap;
+import javax.swing.JOptionPane;
+import javax.swing.table.DefaultTableModel;
+import net.proteanit.sql.DbUtils;
+import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.view.JasperViewer;
+
+/**
+ *
+ * @author Paulo Rodolfo A. Matos
+ */
+public class TelaOM extends javax.swing.JInternalFrame {
+
+    Connection conexao = null;
+    PreparedStatement pst = null;
+    ResultSet rs = null;
+
+    //a linha abaixo cria uma variável para armazenar um texto de acordo com radion button selecionado
+    private String tipo;
+
+    /**
+     * Creates new form TelaOM
+     */
+    public TelaOM() {
+        initComponents();
+        conexao = Moduloconexao.conector();
+    }
+
+    private void pesquisar_cliente() {
+        String sql = "select idcli as Id, nomecli as Nome, fonecli as Fone from tbclientes where nomecli like ?";
+        try {
+            pst = conexao.prepareCall(sql);
+            pst.setString(1, txtCliPesquisar.getText() + "%");
+            rs = pst.executeQuery();
+            tblClientes.setModel(DbUtils.resultSetToTableModel(rs));
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
+
+    private void setar_campos() {
+        int setar = tblClientes.getSelectedRow();
+        txtCliId.setText(tblClientes.getModel().getValueAt(setar, 0).toString());
+    }
+
+    //metodo para cadastrar uma OM
+    private void emitir_om() {
+        String sql = "insert into tbom(tipo,situacao,equipamento,defeito,servico,responsavel,valor,idcli) values(?,?,?,?,?,?,?,?)";
+        try {
+            pst = conexao.prepareStatement(sql);
+            pst.setString(1, tipo);
+            pst.setString(2, cboOmSit.getSelectedItem().toString());
+            pst.setString(3, txtOmEquip.getText());
+            pst.setString(4, txtOmDef.getText());
+            pst.setString(5, txtOmServ.getText());
+            pst.setString(6, txtOmTec.getText());
+            pst.setString(7, txtOmValor.getText().replace(",", "."));
+            pst.setString(8, txtCliId.getText());
+
+            //validação dos campos obrigatórios
+            if (txtCliId.getText().isEmpty() || (txtOmEquip.getText().isEmpty()) || (txtOmDef.getText().isEmpty()) || cboOmSit.getSelectedItem().equals(" ")) {
+                JOptionPane.showMessageDialog(null, "Preencha todos os campos obrigatórios.");
+            } else {
+                int adicionado = pst.executeUpdate();
+                if (adicionado > 0) {
+                    JOptionPane.showMessageDialog(null, "OM emitida com sucesso.");
+                    //recuperar o número da OM
+                    recuperarOm();
+                    btnOmAdicionar.setEnabled(false);
+                    btnOmPesquisar.setEnabled(false);
+                    btnOmImprimir.setEnabled(true);
+                }
+            }
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
+
+    //metodo para pesquisar um OM
+    private void pesquisar_om() {
+        //a linha abaixo cria uma caixa de entrada do tipo JOptionPane
+        String num_om = JOptionPane.showInputDialog("Número da OM");
+        String sql = "select om,date_format(data_om,'%d/%m/%Y - %H:%i'),tipo,situacao,equipamento,defeito,servico,responsavel,valor,idcli from tbom where om= " + num_om;
+        try {
+            pst = conexao.prepareStatement(sql);
+            rs = pst.executeQuery();
+            if (rs.next()) {
+                txtOm.setText(rs.getString(1));
+                txtData.setText(rs.getString(2));
+                //setando os radios buttons
+                String rbtTipo = rs.getString(3);
+                if (rbtTipo.equals("OM")) {
+                    rbtOm.setSelected(true);
+                    tipo = "OM";
+                } else {
+                    rbtOrc.setSelected(true);
+                    tipo = "Orçamento";
+                }
+                cboOmSit.setSelectedItem(rs.getString(4));
+                txtOmEquip.setText(rs.getString(5));
+                txtOmDef.setText(rs.getString(6));
+                txtOmServ.setText(rs.getString(7));
+                txtOmTec.setText(rs.getString(8));
+                txtOmValor.setText(rs.getString(9));
+                txtCliId.setText(rs.getString(10));
+                //evitando problemas,desabilitando o pesquisar clientes para evitar linkar uma OM no cliente errado
+                btnOmAdicionar.setEnabled(false);
+                btnOmPesquisar.setEnabled(false);
+                txtCliPesquisar.setEnabled(false);
+                tblClientes.setVisible(false);
+                //ativar demais botões
+                btnOmAlterar.setEnabled(true);
+                btnOmExcluir.setEnabled(true);
+                btnOmImprimir.setEnabled(true);
+            } else {
+                JOptionPane.showMessageDialog(null, "OM não cadastrada.");
+            }
+        } catch (SQLSyntaxErrorException e) {
+            JOptionPane.showMessageDialog(null, "OM Inválida");
+            //System.out.println(e);
+        } catch (Exception e2) {
+            JOptionPane.showMessageDialog(null, e2);
+        }
+    }
+
+// metodo para alterar uma OM
+    private void alterar_om() {
+        String sql = "update tbom set tipo=?,situacao=?,equipamento=?,defeito=?,servico=?,responsavel=?,valor=? where om=?";
+        try {
+            pst = conexao.prepareStatement(sql);
+            pst.setString(1, tipo);
+            pst.setString(2, cboOmSit.getSelectedItem().toString());
+            pst.setString(3, txtOmEquip.getText());
+            pst.setString(4, txtOmDef.getText());
+            pst.setString(5, txtOmServ.getText());
+            pst.setString(6, txtOmTec.getText());
+            pst.setString(7, txtOmValor.getText().replace(",", "."));
+            pst.setString(8, txtOm.getText());
+
+            //validação dos campos obrigatórios
+            if (txtCliId.getText().isEmpty() || (txtOmEquip.getText().isEmpty()) || (txtOmDef.getText().isEmpty()) || cboOmSit.getSelectedItem().equals(" ")) {
+                JOptionPane.showMessageDialog(null, "Preencha todos os campos obrigatórios.");
+            } else {
+                int adicionado = pst.executeUpdate();
+                if (adicionado > 0) {
+                    JOptionPane.showMessageDialog(null, "OM alterada com sucesso.");
+                    limpar();
+                }
+            }
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
+
+    //metodo para excluir OM
+    private void excluir_om() {
+        int confirma = JOptionPane.showConfirmDialog(null, "Tem certeza que deseja excluir OM?", "Atenção", JOptionPane.YES_NO_OPTION);
+        if (confirma == JOptionPane.YES_OPTION) {
+            String sql = "delete from tbom where om=?";
+            try {
+                pst = conexao.prepareStatement(sql);
+                pst.setString(1, txtOm.getText());
+                int apagado = pst.executeUpdate();
+                if (apagado > 0) {
+                    JOptionPane.showMessageDialog(null, "OM excluída com sucesso");
+                    limpar();
+                }
+
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(null, e);
+            }
+        }
+    }
+
+    //metodo para imprimir uma OM
+    private void imprimir_om(){
+        // imprimindo um relatório de OM
+        int confirma = JOptionPane.showConfirmDialog(null, "Confirma a impressão desta Ordem de Envio?","Atenção",JOptionPane.YES_NO_OPTION);
+        if (confirma == JOptionPane.YES_NO_OPTION){
+            //imprimindo relatório com o framework JasperReports
+            try {
+                //usando a classe HashMap para criar um filtro que fazem parte do framework JasperReports
+                HashMap filtro = new HashMap();
+                filtro.put("om",Integer.parseInt(txtOm.getText()));
+                //Usando a classe JasperPrint para preparar a impressão de um relatório
+                JasperPrint print = JasperFillManager.fillReport("C:/reports/om.jasper",filtro,conexao);
+                //a linha abaixo exibe o relatório através da classe JasperViewer
+                JasperViewer.viewReport(print,false);
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(null, e);
+            }
+        }
+    }
+    
+    //recuperar OM
+    private void recuperarOm(){
+        String sql = "select max(om) from tbom";
+        try {
+            pst=conexao.prepareStatement(sql);
+            rs=pst.executeQuery();
+            if(rs.next()){
+                txtOm.setText(rs.getString(1));
+            }
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
+    //limpar campos e gerenciar os botões
+    private void limpar() {
+        txtOm.setText(null);
+        txtData.setText(null);
+        txtCliPesquisar.setText(null);
+        ((DefaultTableModel) tblClientes.getModel()).setRowCount(0);
+        cboOmSit.setSelectedItem(" ");
+        txtCliId.setText(null);
+        txtOmEquip.setText(null);
+        txtOmDef.setText(null);
+        txtOmServ.setText(null);
+        txtOmTec.setText(null);
+        txtOmValor.setText(null);
+        //habilitar os objetos
+        btnOmAdicionar.setEnabled(true);
+        btnOmPesquisar.setEnabled(true);
+        txtCliPesquisar.setEnabled(true);
+        tblClientes.setVisible(true);
+        // desabilitar os botões
+        btnOmAlterar.setEnabled(false);
+        btnOmExcluir.setEnabled(false);
+        btnOmImprimir.setEnabled(false);
+    }
+
+    /**
+     * This method is called from within the constructor to initialize the form.
+     * WARNING: Do NOT modify this code. The content of this method is always
+     * regenerated by the Form Editor.
+     */
+    @SuppressWarnings("unchecked")
+    // <editor-fold defaultstate="collapsed" desc="Generated Code">                          
+    private void initComponents() {
+
+        buttonGroup1 = new javax.swing.ButtonGroup();
+        jPanel1 = new javax.swing.JPanel();
+        jLabel1 = new javax.swing.JLabel();
+        jLabel2 = new javax.swing.JLabel();
+        txtOm = new javax.swing.JTextField();
+        txtData = new javax.swing.JTextField();
+        rbtOrc = new javax.swing.JRadioButton();
+        rbtOm = new javax.swing.JRadioButton();
+        jLabel3 = new javax.swing.JLabel();
+        cboOmSit = new javax.swing.JComboBox<>();
+        jPanel2 = new javax.swing.JPanel();
+        txtCliPesquisar = new javax.swing.JTextField();
+        jLabel4 = new javax.swing.JLabel();
+        jScrollPane1 = new javax.swing.JScrollPane();
+        tblClientes = new javax.swing.JTable();
+        txtCliId = new javax.swing.JTextField();
+        txtOmDef = new javax.swing.JTextField();
+        txtOmServ = new javax.swing.JTextField();
+        txtOmTec = new javax.swing.JTextField();
+        txtOmValor = new javax.swing.JTextField();
+        jLabel5 = new javax.swing.JLabel();
+        jLabel6 = new javax.swing.JLabel();
+        jLabel7 = new javax.swing.JLabel();
+        jLabel8 = new javax.swing.JLabel();
+        jLabel9 = new javax.swing.JLabel();
+        jLabel14 = new javax.swing.JLabel();
+        txtOmEquip = new javax.swing.JTextField();
+        btnOmAdicionar = new javax.swing.JButton();
+        btnOmAlterar = new javax.swing.JButton();
+        btnOmExcluir = new javax.swing.JButton();
+        btnOmImprimir = new javax.swing.JButton();
+        btnOmPesquisar = new javax.swing.JButton();
+
+        setClosable(true);
+        setIconifiable(true);
+        setMaximizable(true);
+        setTitle("CADASTRO DE MATERIAIS");
+        setPreferredSize(new java.awt.Dimension(674, 478));
+        addInternalFrameListener(new javax.swing.event.InternalFrameListener() {
+            public void internalFrameOpened(javax.swing.event.InternalFrameEvent evt) {
+                formInternalFrameOpened(evt);
+            }
+            public void internalFrameClosing(javax.swing.event.InternalFrameEvent evt) {
+            }
+            public void internalFrameClosed(javax.swing.event.InternalFrameEvent evt) {
+            }
+            public void internalFrameIconified(javax.swing.event.InternalFrameEvent evt) {
+            }
+            public void internalFrameDeiconified(javax.swing.event.InternalFrameEvent evt) {
+            }
+            public void internalFrameActivated(javax.swing.event.InternalFrameEvent evt) {
+            }
+            public void internalFrameDeactivated(javax.swing.event.InternalFrameEvent evt) {
+            }
+        });
+
+        jPanel1.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+
+        jLabel1.setText("Nº OM");
+
+        jLabel2.setText("Data");
+
+        txtOm.setEditable(false);
+        txtOm.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                txtOmActionPerformed(evt);
+            }
+        });
+
+        txtData.setEditable(false);
+
+        buttonGroup1.add(rbtOrc);
+        rbtOrc.setText("Reparo");
+        rbtOrc.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                rbtOrcActionPerformed(evt);
+            }
+        });
+
+        buttonGroup1.add(rbtOm);
+        rbtOm.setText("Novo");
+        rbtOm.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                rbtOmActionPerformed(evt);
+            }
+        });
+
+        javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
+        jPanel1.setLayout(jPanel1Layout);
+        jPanel1Layout.setHorizontalGroup(
+            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel1Layout.createSequentialGroup()
+                .addContainerGap()
+                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPanel1Layout.createSequentialGroup()
+                        .addComponent(rbtOrc)
+                        .addGap(18, 18, 18)
+                        .addComponent(rbtOm))
+                    .addGroup(jPanel1Layout.createSequentialGroup()
+                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPanel1Layout.createSequentialGroup()
+                                .addComponent(jLabel1)
+                                .addGap(66, 66, 66))
+                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
+                                .addComponent(txtOm, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(18, 18, 18)))
+                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPanel1Layout.createSequentialGroup()
+                                .addComponent(jLabel2)
+                                .addGap(0, 101, Short.MAX_VALUE))
+                            .addComponent(txtData))))
+                .addContainerGap())
+        );
+        jPanel1Layout.setVerticalGroup(
+            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel1Layout.createSequentialGroup()
+                .addContainerGap(16, Short.MAX_VALUE)
+                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jLabel2, javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(jLabel1, javax.swing.GroupLayout.Alignment.TRAILING))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(txtData, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtOm, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(rbtOm)
+                    .addComponent(rbtOrc))
+                .addGap(18, 18, 18))
+        );
+
+        jLabel3.setText("Situação");
+
+        cboOmSit.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Apto", "Inapto", "Aguardando envio", "Pronto para envio", "Em trânsito", "Retornou" }));
+        cboOmSit.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                cboOmSitActionPerformed(evt);
+            }
+        });
+
+        jPanel2.setBorder(javax.swing.BorderFactory.createTitledBorder("Cliente"));
+        jPanel2.setToolTipText("");
+
+        txtCliPesquisar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                txtCliPesquisarActionPerformed(evt);
+            }
+        });
+        txtCliPesquisar.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyReleased(java.awt.event.KeyEvent evt) {
+                txtCliPesquisarKeyReleased(evt);
+            }
+        });
+
+        jLabel4.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/read.png"))); // NOI18N
+        jLabel4.setText("* ID");
+
+        tblClientes.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null},
+                {null, null, null},
+                {null, null, null},
+                {null, null, null}
+            },
+            new String [] {
+                "ID", "Nome", "Fone"
+            }
+        ));
+        tblClientes.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                tblClientesMouseClicked(evt);
+            }
+        });
+        jScrollPane1.setViewportView(tblClientes);
+
+        txtCliId.setEditable(false);
+        txtCliId.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                txtCliIdActionPerformed(evt);
+            }
+        });
+
+        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
+        jPanel2.setLayout(jPanel2Layout);
+        jPanel2Layout.setHorizontalGroup(
+            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel2Layout.createSequentialGroup()
+                .addContainerGap()
+                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
+                    .addGroup(jPanel2Layout.createSequentialGroup()
+                        .addComponent(txtCliPesquisar, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jLabel4)
+                        .addGap(10, 10, 10)
+                        .addComponent(txtCliId, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(0, 22, Short.MAX_VALUE)))
+                .addContainerGap())
+        );
+        jPanel2Layout.setVerticalGroup(
+            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel2Layout.createSequentialGroup()
+                .addContainerGap()
+                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtCliPesquisar, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel4, javax.swing.GroupLayout.PREFERRED_SIZE, 48, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtCliId, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 91, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+
+        txtOmValor.setText("0");
+
+        jLabel5.setText("* Equipamento");
+
+        jLabel6.setText("* Descrição");
+
+        jLabel7.setText("Serviço");
+
+        jLabel8.setText("Técnico");
+
+        jLabel9.setText("Quantidade");
+
+        btnOmAdicionar.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/create.png"))); // NOI18N
+        btnOmAdicionar.setToolTipText("Adicionar OM");
+        btnOmAdicionar.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnOmAdicionar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnOmAdicionarActionPerformed(evt);
+            }
+        });
+
+        btnOmAlterar.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/update.png"))); // NOI18N
+        btnOmAlterar.setToolTipText("Atualizar OM");
+        btnOmAlterar.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnOmAlterar.setEnabled(false);
+        btnOmAlterar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnOmAlterarActionPerformed(evt);
+            }
+        });
+
+        btnOmExcluir.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/delete.png"))); // NOI18N
+        btnOmExcluir.setToolTipText("Deletar OM");
+        btnOmExcluir.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnOmExcluir.setEnabled(false);
+        btnOmExcluir.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnOmExcluirActionPerformed(evt);
+            }
+        });
+
+        btnOmImprimir.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/2931177_output_print_printer_icon (1).png"))); // NOI18N
+        btnOmImprimir.setToolTipText("Imprimir OM");
+        btnOmImprimir.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnOmImprimir.setEnabled(false);
+        btnOmImprimir.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnOmImprimirActionPerformed(evt);
+            }
+        });
+
+        btnOmPesquisar.setIcon(new javax.swing.ImageIcon(getClass().getResource("/br/com/infox/icones/read.png"))); // NOI18N
+        btnOmPesquisar.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnOmPesquisar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnOmPesquisarActionPerformed(evt);
+            }
+        });
+
+        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
+        getContentPane().setLayout(layout);
+        layout.setHorizontalGroup(
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(layout.createSequentialGroup()
+                .addGap(28, 28, 28)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(layout.createSequentialGroup()
+                                .addComponent(jLabel3)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                                .addComponent(cboOmSit, javax.swing.GroupLayout.PREFERRED_SIZE, 203, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(18, 18, 18)
+                        .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(layout.createSequentialGroup()
+                                .addGap(35, 35, 35)
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(jLabel7)
+                                    .addComponent(jLabel8)))
+                            .addComponent(jLabel5)
+                            .addComponent(jLabel6, javax.swing.GroupLayout.Alignment.TRAILING))
+                        .addGap(18, 18, 18)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(txtOmDef, javax.swing.GroupLayout.PREFERRED_SIZE, 486, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(layout.createSequentialGroup()
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(txtOmTec, javax.swing.GroupLayout.PREFERRED_SIZE, 179, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                        .addComponent(btnOmPesquisar)
+                                        .addGap(39, 39, 39)))
+                                .addGap(3, 3, 3)
+                                .addComponent(btnOmAlterar)
+                                .addGap(39, 39, 39)
+                                .addComponent(btnOmExcluir)
+                                .addGap(39, 39, 39)
+                                .addComponent(btnOmImprimir))
+                            .addComponent(txtOmEquip, javax.swing.GroupLayout.PREFERRED_SIZE, 486, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                .addGroup(layout.createSequentialGroup()
+                                    .addComponent(jLabel9)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                                    .addComponent(txtOmValor, javax.swing.GroupLayout.PREFERRED_SIZE, 228, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addComponent(txtOmServ, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 486, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                    .addGroup(layout.createSequentialGroup()
+                        .addGap(27, 27, 27)
+                        .addComponent(btnOmAdicionar)
+                        .addGap(39, 39, 39)
+                        .addComponent(jLabel14)))
+                .addContainerGap(31, Short.MAX_VALUE))
+        );
+        layout.setVerticalGroup(
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(layout.createSequentialGroup()
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addGap(30, 30, 30)
+                        .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(cboOmSit, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel3)))
+                    .addGroup(layout.createSequentialGroup()
+                        .addContainerGap()
+                        .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addGap(23, 23, 23)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtOmEquip, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel5))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtOmDef, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel6))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtOmServ, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel7))
+                .addGap(11, 11, 11)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtOmTec, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtOmValor, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel9)
+                    .addComponent(jLabel8))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 25, Short.MAX_VALUE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                        .addComponent(jLabel14)
+                        .addGap(34, 34, 34))
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addComponent(btnOmAlterar)
+                            .addComponent(btnOmExcluir)
+                            .addComponent(btnOmAdicionar)
+                            .addComponent(btnOmImprimir)
+                            .addComponent(btnOmPesquisar))
+                        .addGap(24, 24, 24))))
+        );
+
+        jPanel2.getAccessibleContext().setAccessibleName("Área");
+
+        setBounds(0, 0, 674, 478);
+    }// </editor-fold>                        
+
+    private void txtOmActionPerformed(java.awt.event.ActionEvent evt) {                                      
+        // TODO add your handling code here:
+    }                                     
+
+    private void txtCliIdActionPerformed(java.awt.event.ActionEvent evt) {                                         
+        // TODO add your handling code here:
+    }                                        
+
+    private void txtCliPesquisarActionPerformed(java.awt.event.ActionEvent evt) {                                                
+        // TODO add your handling code here:
+    }                                               
+
+    private void txtCliPesquisarKeyReleased(java.awt.event.KeyEvent evt) {                                            
+        // chamar o metodo pesquisar_cliente
+        pesquisar_cliente();
+    }                                           
+
+    private void tblClientesMouseClicked(java.awt.event.MouseEvent evt) {                                         
+        // chamando metodo setar_campos
+        setar_campos();
+    }                                        
+
+    private void rbtOrcActionPerformed(java.awt.event.ActionEvent evt) {                                       
+        // atribuindo um texto a variável tipo se selecionado
+        tipo = "Orçamento";
+    }                                      
+
+    private void rbtOmActionPerformed(java.awt.event.ActionEvent evt) {                                      
+        // a linha abaixo atribui um texto a variável tipo se o radio button estiver selecionado
+        tipo = "OM";
+    }                                     
+
+    private void formInternalFrameOpened(javax.swing.event.InternalFrameEvent evt) {                                         
+        // ao abrir o form marcar o radion button Orçamento
+        rbtOrc.setSelected(true);
+        tipo = "Orçamento";
+    }                                        
+
+    private void btnOmAdicionarActionPerformed(java.awt.event.ActionEvent evt) {                                               
+        // quando clica chama o metodo emitir OM
+        emitir_om();
+    }                                              
+
+    private void btnOmPesquisarActionPerformed(java.awt.event.ActionEvent evt) {                                               
+        // chamando metodo pesquisar_om
+        pesquisar_om();
+    }                                              
+
+    private void btnOmAlterarActionPerformed(java.awt.event.ActionEvent evt) {                                             
+        // chamando metodo alterar OM
+        alterar_om();
+    }                                            
+
+    private void btnOmExcluirActionPerformed(java.awt.event.ActionEvent evt) {                                             
+        // chamando metodo excluir OM
+        excluir_om();
+    }                                            
+
+    private void btnOmImprimirActionPerformed(java.awt.event.ActionEvent evt) {                                              
+        // chamando metodo para imprimir OM
+        imprimir_om();
+    }                                             
+
+    private void cboOmSitActionPerformed(java.awt.event.ActionEvent evt) {                                         
+        // TODO add your handling code here:
+    }                                        
+
+
+    // Variables declaration - do not modify                     
+    private javax.swing.JButton btnOmAdicionar;
+    private javax.swing.JButton btnOmAlterar;
+    private javax.swing.JButton btnOmExcluir;
+    private javax.swing.JButton btnOmImprimir;
+    private javax.swing.JButton btnOmPesquisar;
+    private javax.swing.ButtonGroup buttonGroup1;
+    private javax.swing.JComboBox<String> cboOmSit;
+    private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel14;
+    private javax.swing.JLabel jLabel2;
+    private javax.swing.JLabel jLabel3;
+    private javax.swing.JLabel jLabel4;
+    private javax.swing.JLabel jLabel5;
+    private javax.swing.JLabel jLabel6;
+    private javax.swing.JLabel jLabel7;
+    private javax.swing.JLabel jLabel8;
+    private javax.swing.JLabel jLabel9;
+    private javax.swing.JPanel jPanel1;
+    private javax.swing.JPanel jPanel2;
+    private javax.swing.JScrollPane jScrollPane1;
+    private javax.swing.JRadioButton rbtOm;
+    private javax.swing.JRadioButton rbtOrc;
+    private javax.swing.JTable tblClientes;
+    private javax.swing.JTextField txtCliId;
+    private javax.swing.JTextField txtCliPesquisar;
+    private javax.swing.JTextField txtData;
+    private javax.swing.JTextField txtOm;
+    private javax.swing.JTextField txtOmDef;
+    private javax.swing.JTextField txtOmEquip;
+    private javax.swing.JTextField txtOmServ;
+    private javax.swing.JTextField txtOmTec;
+    private javax.swing.JTextField txtOmValor;
+    // End of variables declaration                   
+}
